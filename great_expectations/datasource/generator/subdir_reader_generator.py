@@ -140,7 +140,7 @@ class SubdirReaderBatchKwargsGenerator(BatchKwargsGenerator):
                 if (file_option.endswith(extension) and not file_option.startswith(".") and
                         (file_option[:-len(extension)], "file") not in valid_options):
                     valid_options.append((file_option[:-len(extension)], "file"))
-                elif os.path.isdir(os.path.join(self.base_directory, file_option)):
+                elif os.path.isdir(os.path.join(base_directory, file_option)):
                     # Make sure there's at least one valid file inside the subdir
                     subdir_options = self._get_valid_file_options(base_directory=os.path.join(base_directory,
                                                                                               file_option))
