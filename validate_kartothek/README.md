@@ -76,9 +76,9 @@ to validate, and then open the Data Docs with results.
     - file: separate Validation Result for each '.parquet' file in the dataset.
     - partition: separate Validation Result for each partition (e.g. 'column?value') of the dataset.
     - dataset: one Validation Result for the whole dataset/table.
-
-         Mechanisms from the above are <span style="color:red"> deprecated</span> since they are not applicable to 
-         nested (i.e. 'real') kartothek datasets.
+    
+        - > Mechanisms from the above are considered deprecated since they are not applicable to nested (i.e. 'real') 
+          kartothek datasets.
 
     - nested dataset: one Validation Result for the whole dataset/table (works for typical kartothek datasets).
     - nested dataset (using wildcard): one Validation Result for the whole dataset/table, but is more conform with GE architecture.
