@@ -51,10 +51,12 @@ If you already have a GE context, you don't have to execute this script.
 (substitute for `great_expectations init` and `great_expectations suite edit 'YOUR_EXPECTATION_SUITE_NAME'`).
     
 2. Follow the instructions given by GE: You should choose (Py)Spark and provide path to your initial dataset, which 
-will be the starting point to build Expectations by GE. Unfortunately, the current version (0.9.7) of GE does not allow 
-user to initialize GE without providing a data file, what is (hopefully) to come soon.
-Test data includes *dummy_dataset*, which could be used for that purpose; GE requires **exact** path to data file, 
-so the following should be presented: *data/dummy_dataset/table/D=bad/E=foobar/PARTITION_ID.parquet*.
+will be the starting point to build Expectations by GE. 
+
+    - Unfortunately, the current version (0.9.7) of GE does not allow user to initialize GE without providing a data 
+    file, what is (hopefully) to come soon.
+    - Test data includes *dummy_dataset*, which could be used for that purpose; GE requires **exact** path to data file, 
+    so the following should be presented: *data/dummy_dataset/table/D=bad/E=foobar/PARTITION_ID.parquet*.
     
 3. Go to the initialized Jupyter Notebook, reconsider the exemplary Expectations, add your own ones, and rerun 
 the Notebook!
@@ -75,8 +77,8 @@ to validate, and then open the Data Docs with results.
     - partition: separate Validation Result for each partition (e.g. 'column?value') of the dataset.
     - dataset: one Validation Result for the whole dataset/table.
 
-            Mechanisms from the above are <span style="color:red"> deprecated</span> since they are not applicable to 
-            nested (i.e. 'real') kartothek datasets.
+         Mechanisms from the above are <span style="color:red"> deprecated</span> since they are not applicable to 
+         nested (i.e. 'real') kartothek datasets.
 
     - nested dataset: one Validation Result for the whole dataset/table (works for typical kartothek datasets).
     - nested dataset (using wildcard): one Validation Result for the whole dataset/table, but is more conform with GE architecture.
