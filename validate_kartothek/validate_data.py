@@ -1,8 +1,14 @@
 import os
+import warnings
 from datetime import datetime
 from enum import Enum
 
+import pandas as pd
 import great_expectations as ge
+
+
+def deprecation():
+    warnings.warn("This validation method/mechanism is deprecated and shouldn't be used.", DeprecationWarning, stacklevel=2)
 
 
 def enumerate_options(options):
@@ -51,32 +57,44 @@ def user_input():
     """
     This method asks user to provide an input, and captures the given information.
 
-    :return: 4-tuple:
-                mechanism: Chosen :class:`ValidationMechanism`;
-                expectation_suite: Name of the chosen expectation suite, towards which data will be validated;
+    :return: 5-tuple:
+                backend: Chosen backend to read data (Spark or pandas);
                 datasource: Name of the GE datasource;
+                mechanism: Chosen :class:`ValidationMechanism` (for Spark) or None (for pandas)
+                expectation_suite: Name of the chosen expectation suite, towards which data will be validated;
                 base_path: Path to the data (namely, to the whole dataset).
     """
-    # 2) get the validation mechanism
-    mechanisms = []
-    for Mechanism in ValidationMechanism:
-        mechanisms.append(Mechanism)
-    mechanism = get_valid_input_from_user("How would you like your dataset to be validated?\n", mechanisms)
+    # 2.1) choose the backend to read data
+    backends = ["Spark", "Pandas"]
+    backend = get_valid_input_from_user("Which backend you want to use to read data?\n", backends)
 
-    # 3) list expectation suites and choose one
+    # 2.2) list datasources (according to chosen backend: Spark or pandas) available in project and choose one
+    datasource_class_name = backend + "DFDatasource" if backend == "Spark" else backend + "Datasource"
+    datasources = [datasource['name'] for datasource in context.list_datasources() if
+                   datasource['class_name'] in datasource_class_name]
+    if not datasources:  # there is no datasources of chosen backend
+        raise NotImplementedError("There is no datasources supporting your backend, please choose another one "
+                                  "(cross support between backends is not implemented yet).")
+    datasource = get_valid_input_from_user("Which datasource do you want to validate?\n", datasources)
+
+    # 2.3) get the validation mechanism (only for Spark)
+    mechanism = None
+    if backend == "Spark":
+        mechanisms = []
+        for Mechanism in ValidationMechanism:
+            mechanisms.append(Mechanism)
+        mechanism = get_valid_input_from_user("How would you like your dataset to be validated?\n", mechanisms)
+
+    # 2.4) list expectation suites and choose one
     expectation_suites = context.list_expectation_suite_names()
     expectation_suite = get_valid_input_from_user("Which expectation suite should be used for validation?\n", expectation_suites)
 
-    # 4) list datasources of the type SparkDFDatasource available in project and choose one
-    datasources = [datasource['name'] for datasource in context.list_datasources() if datasource['class_name'] == 'SparkDFDatasource']
-    datasource = get_valid_input_from_user("Which datasource do you want to validate?\n", datasources)
-
-    # 5) list spark datasets available for validation and choose one
+    # 2.5) list datasets available for validation (all directories in "data/" folder) and choose one
     datasets = [data_folder for data_folder in os.listdir("data/") if os.path.isdir("data/" + data_folder)]
     path = get_valid_input_from_user("Which dataset do you want to validate?\n", datasets)
-    base_path = "../data/" + path + "/"
+    base_path = "data/" + path + "/"
 
-    # 6) list tables in the dataset and choose one
+    # 2.6) list tables in the dataset and choose one
     tables = os.listdir("data/" + path + "/")
     if len(tables) == 1:
         base_path += tables[0] + "/"
@@ -84,7 +102,7 @@ def user_input():
         table = get_valid_input_from_user("Which table do you want to validate?\n", tables)
         base_path += table + "/"
 
-    return mechanism, expectation_suite, datasource, base_path
+    return backend, datasource, mechanism, expectation_suite, base_path
 
 
 def get_batch_from_files():
@@ -97,20 +115,21 @@ def get_batch_from_files():
 
     :return: List of batches to be validated. Each batch corresponds to one ".parquet" file.
     """
+    deprecation()
     batches_to_validate = []
 
-    # 6) list all available data assets
+    # 4) list all available data assets
     data_assets = context.get_available_data_asset_names()[datasource_name]['subdir_reader']['names']
     for data_asset in data_assets:
-        # 6.1) handle data asset name as directory
+        # 4.1) handle data asset name as directory
         if data_asset[1] == 'directory':
             data_asset_name = data_asset[0] + "/"
 
-        # 6.2) handle data asset name as file (single 'partition')
+        # 4.2) handle data asset name as file (single 'partition')
         elif data_asset[1] == 'file':
             data_asset_name = data_asset[0]
 
-        # 7) list partitions and get a batch of data for each partition in the data asset
+        # 5) list partitions and get a batch of data for each partition in the data asset
         partitions = subdir_reader_generator.get_available_partition_ids(data_asset_name)
         for partition in partitions:
             batch_kwargs = context.build_batch_kwargs(datasource_name, "subdir_reader", data_asset_name,
@@ -132,20 +151,21 @@ def get_batch_from_partitions():
 
     :return: List of batches to be validated. Each batch corresponds to one 'column?value' partition folder.
     """
+    deprecation()
     batches_to_validate = []
 
-    # 6) list all available data assets
+    # 4) list all available data assets
     data_assets = context.get_available_data_asset_names()[datasource_name]['subdir_reader']['names']
     for data_asset in data_assets:
-        # 6.1) handle data asset name as directory
+        # 4.1) handle data asset name as directory
         if data_asset[1] == 'directory':
             data_asset_name = data_asset[0] + "/"
 
-        # 6.2) handle data asset name as file (single 'partition')
+        # 4.2) handle data asset name as file (single 'partition')
         elif data_asset[1] == 'file':
             data_asset_name = data_asset[0]
 
-        # 7) get a batch of data for the whole data asset
+        # 5) get a batch of data for the whole data asset
         batch_kwargs = {'path': subdir_reader_generator.base_directory + data_asset_name, 'datasource': datasource_name,
                         'reader_method': "parquet"}
         batch = context.get_batch(batch_kwargs, expectation_suite_name)
@@ -165,27 +185,28 @@ def get_batch_from_dataset():
 
     :return: List of batches to be validated. Includes only one batch corresponding to the whole dataset/table (if multiple tables).
     """
+    deprecation()
     partition_paths = []
 
-    # 6) list all available data assets
+    # 4) list all available data assets
     data_assets = context.get_available_data_asset_names()[datasource_name]['subdir_reader']['names']
     for data_asset in data_assets:
-        # 6.1) handle data asset name as directory
+        # 4.1) handle data asset name as directory
         if data_asset[1] == 'directory':
             data_asset_name = data_asset[0] + "/"
 
-        # 6.2) handle data asset name as file (single 'partition')
+        # 4.2) handle data asset name as file (single 'partition')
         elif data_asset[1] == 'file':
             data_asset_name = data_asset[0]
 
-        # 7.1) get paths of all ".parquet" files
+        # 5.1) get paths of all ".parquet" files
         partitions = subdir_reader_generator.get_available_partition_ids(data_asset_name)
         for partition in partitions:
             batch_kwargs = context.build_batch_kwargs(datasource_name, "subdir_reader", data_asset_name,
                                                       partition_id=partition)
             partition_paths.append(batch_kwargs['path'])
 
-    # 7.2) read all ".parquet" files as one spark dataframe, and get it as batch of data
+    # 5.2) read all ".parquet" files as one spark dataframe, and get it as batch of data
     df = datasource.spark.read.parquet(*partition_paths)
     batch_kwargs = {'dataset': df, 'datasource': datasource_name}
     batch = context.get_batch(batch_kwargs, expectation_suite_name)
@@ -208,11 +229,11 @@ def get_batch_from_nested_dataset():
     """
     partition_paths = []
 
-    # 6) while there are available data assets, go through recursively:
+    # 4) while there are available data assets, go through recursively:
     data_assets = context.get_available_data_asset_names()[datasource_name]['subdir_reader']['names']
     while data_assets:
         for data_asset in data_assets:
-            # 6.1) list available partitions in directories, and add them to data assets
+            # 4.1) list available partitions in directories, and add them to data assets
             if data_asset[1] == 'directory':
                 data_assets += [(data_asset[0] + "/" + partition_id, 'directory')
                                 if os.path.isdir(subdir_reader_generator.base_directory + data_asset[0] + "/" + partition_id)
@@ -220,13 +241,13 @@ def get_batch_from_nested_dataset():
                                 for partition_id in
                                 subdir_reader_generator.get_available_partition_ids(data_asset[0])]
 
-            # 6.2) add paths to ".parquet" files (single partitions) to 'partition_paths'
+            # 4.2) add paths to ".parquet" files (single partitions) to 'partition_paths'
             elif data_asset[1] == 'file':
                 partition_paths.append(subdir_reader_generator.base_directory + data_asset[0] + ".parquet")
 
             data_assets.remove(data_asset)
 
-    # 7) read all ".parquet" files as one spark dataframe, and get it as batch of data
+    # 5) read all ".parquet" files as one spark dataframe, and get it as batch of data
     df = datasource.spark.read.parquet(*partition_paths)
     batch_kwargs = {'dataset': df, 'datasource': datasource_name}
     batch = context.get_batch(batch_kwargs, expectation_suite_name)
@@ -247,25 +268,52 @@ def get_batch_from_nested_dataset_using_wildcard():
 
     :return: List of batches to be validated. Includes only one batch corresponding to the whole dataset/table (if multiple tables).
     """
-    # 6) find the maximal directory depth
-    max_depth = 0
-    for root, dirs, files in os.walk(subdir_reader_generator.base_directory):
-        if files:  # not empty
-            for file in files:
-                path = os.path.relpath(os.path.join(root, file), subdir_reader_generator.base_directory)
-
-                depth = path.count("/")
-                if depth > max_depth:
-                    max_depth = depth
+    # 4) find the maximal directory depth
+    max_depth = _get_parquet_directory_depth(subdir_reader_generator.base_directory)
 
     path_mask = "*/" * max_depth + "*.parquet"
 
-    # 7) get a batch of data using the path mask
+    # 5) get a batch of data using the path mask
     batch_kwargs = {'path': subdir_reader_generator.base_directory + path_mask, 'datasource': datasource_name,
                     'reader_method': "parquet"}
     batch = context.get_batch(batch_kwargs, expectation_suite_name)
 
     return [batch]
+
+
+def get_batch_from_pandas_dataset():
+    """
+    Method for getting a list of GE data batches to be validated.
+    This method generates a batch from the whole dataset by reading all available ".parquet" files in all
+    data assets (from their paths, obtained from GlobReader Generator) with pandas in one dataframe.
+
+    :return: List of batches to be validated. Includes only one batch corresponding to the whole dataset/table (if multiple tables).
+    """
+    # 4) get all ".parquet" file paths from generator
+    parquet_files = [os.path.join(glob_reader_generator.base_directory, file) for file
+                     in glob_reader_generator.get_available_partition_ids("parquet_globs")]
+
+    # 5) read all ".parquet" files as one pandas dataframe, and get it as batch of data
+    df = pd.concat((pd.read_parquet(file) for file in parquet_files))
+    batch_kwargs = {'dataset': df, 'datasource': datasource_name}
+    batch = context.get_batch(batch_kwargs, expectation_suite_name)
+    batch.batch_kwargs['path'] = glob_reader_generator.base_directory  # add path to distinguish between validations
+
+    return [batch]
+
+
+def _get_parquet_directory_depth(directory):
+    directory_depth = 0
+    for root, dirs, files in os.walk(directory):
+        if files:  # not empty
+            for file in files:
+                path = os.path.relpath(os.path.join(root, file), directory)
+
+                depth = path.count("/")
+                if depth > directory_depth:
+                    directory_depth = depth
+
+    return directory_depth
 
 
 class ValidationMechanism(Enum):
@@ -289,23 +337,39 @@ if __name__ == "__main__":
     # 1) load data context of GE
     context = ge.data_context.DataContext()
 
-    # 2-4) get input from user
-    validation_mechanism, expectation_suite_name, datasource_name, base_directory = user_input()
+    # 2) get input from user
+    backend, datasource_name, validation_mechanism, expectation_suite_name, base_directory = user_input()
 
-    # 5) add a temporal SubdirReader batch kwargs generator to generate data assets
-    context.add_generator(datasource_name, "subdir_reader", "SubdirReaderBatchKwargsGenerator", base_directory=base_directory)
+    # 3) add a temporal batch kwargs generator to generate data assets
     datasource = context.get_datasource(datasource_name=datasource_name)
-    subdir_reader_generator = datasource.get_generator(generator_name="subdir_reader")
+    if backend == "Pandas":  # add GlobReader
+        max_depth = _get_parquet_directory_depth(os.path.abspath(base_directory))
+        context.add_generator(datasource_name, "glob_reader", "GlobReaderBatchKwargsGenerator",
+                              base_directory=os.path.abspath(base_directory), reader_method="parquet",
+                              asset_globs={
+                                  "parquet_globs": {
+                                      "glob": "*/" * max_depth + "*.parquet"
+                                  }
+                              })
+        glob_reader_generator = datasource.get_generator(generator_name="glob_reader")
 
-    # 6-7) get batches of data to validate
-    batches_to_validate = validation_mechanism.value[1]()
+        # 4-5) get batches of data to validate
+        batches_to_validate = get_batch_from_pandas_dataset()
 
-    # 8) validate a bunch of data assets using Validation Operator
+    elif backend == "Spark":  # add SubdirReader
+        context.add_generator(datasource_name, "subdir_reader", "SubdirReaderBatchKwargsGenerator",
+                              base_directory="../" + base_directory)
+        subdir_reader_generator = datasource.get_generator(generator_name="subdir_reader")
+
+        # 4-5) get batches of data to validate
+        batches_to_validate = validation_mechanism.value[1]()
+
+    # 6) validate a bunch of data assets using Validation Operator
     run_id = datetime.now().isoformat().replace(":", "").replace("-", "") + "Z"
     results = context.run_validation_operator(
         "action_list_operator",
         assets_to_validate=batches_to_validate,
         run_id=run_id)
 
-    # 9) show Data Docs
+    # 7) show Data Docs
     context.open_data_docs()
